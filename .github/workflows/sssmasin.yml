@@ -164,29 +164,17 @@ jobs:
           $BundleDir = Join-Path $env:TEMP 'AppBundle'
           $ThreeDir = Join-Path $env:TEMP 'THREE_EXTRACTED'
            
-          # NST Browser - Fixed Installation with all Inno Setup switches
+          # NST Browser - Fixed Installation with NSIS switch
           $NstInst = Get-ChildItem -Path $BundleDir -Filter "*nst*.exe" -Recurse | Where-Object { $_.Name -notmatch "unins" } | Select-Object -First 1
           if ($NstInst) {
               Write-Host "Found NST Browser Installer: $($NstInst.FullName)"
               
-              # Use all Inno Setup silent switches to prevent ALL dialogs
-              # /VERYSILENT - No progress bar
-              # /SUPPRESSMSGBOXES - Suppress all message boxes
-              # /NORESTART - Don't restart
-              # /SP- - Disable "This will install..." message
-              # /LANG=en - Set language to English (prevents language dialog)
-              
-              $InstallArgs = @(
-                  "/VERYSILENT",
-                  "/SUPPRESSMSGBOXES", 
-                  "/NORESTART",
-                  "/SP-",
-                  "/LANG=en"
-              )
+              # متصفح NST يستخدم مثبت من نوع NSIS، والمفتاح السحري له هو /S كابيتال
+              $InstallArgs = @("/S")
               
               Write-Host "Installing with args: $($InstallArgs -join ' ')"
               
-              # Run installer and wait for completion
+              # تشغيل التثبيت وانتظاره حتى ينتهي تماماً
               $process = Start-Process -FilePath $NstInst.FullName `
                   -ArgumentList $InstallArgs `
                   -Wait -PassThru -NoNewWindow
@@ -194,7 +182,10 @@ jobs:
               Write-Host "NST Browser installer exited with code: $($process.ExitCode)"
               Start-Sleep -Seconds 15
               
-              # Install kernel
+              # خطوة احتياطية: إغلاق المتصفح فوراً إذا تم فتحه تلقائياً بعد التثبيت لمنع تعليق السكربت
+              Stop-Process -Name "Nstbrowser" -ErrorAction SilentlyContinue
+              
+              # تثبيت الكيرنل الخاص بالمتصفح
               $NstK = Get-ChildItem -Path $ThreeDir -Filter "nstchrome.zip" -Recurse | Select-Object -First 1
               if ($NstK) {
                   $NstDest = "C:\Users\runneradmin\.nst-agent\download\kernels\nstchrome"
