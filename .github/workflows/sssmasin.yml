@@ -7,6 +7,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 800
     env:
+      # mail email: ketrine.knudsen@mail.com  pass: CvvDDD222@1
+      # nst mail   email: ops.backyard@execs.com   pass: Zxxz@@@@1111
+      # desktop  email: info.alexxshaww@gardener.com  pass: ZZZxxxaaa@111
+      # appsf  email: in.elizabethpenny@lovecat.com  pass: FFFdddaaa@@11
+      
       TIME_JOB: "340"
       aa2: "XCDOOD"
       aa3: "Zxxz4444"
@@ -18,7 +23,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. إعداد النظام، المستخدمين، ودقة الشاشة
+      # 1. إعداد النظام والمستخدمين ودقة الشاشة
       - name: System & RDP Setup
         continue-on-error: true
         shell: pwsh
@@ -164,15 +169,19 @@ jobs:
           $BundleDir = Join-Path $env:TEMP 'AppBundle'
           $ThreeDir = Join-Path $env:TEMP 'THREE_EXTRACTED'
            
-          # NST Browser (Fixed Installation Logic)
+          # NST Browser (Fixed Installation - prevents language popup)
           $NstInst = Get-ChildItem -Path $BundleDir -Filter "*nst*.exe" -Recurse | Where-Object { $_.Name -notmatch "unins" } | Select-Object -First 1
           if ($NstInst) {
               Write-Host "Found NST Browser Installer: $($NstInst.FullName)"
-              $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$($NstInst.FullName)`" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru -NoNewWindow
-              if ($process.ExitCode -ne 0) {
-                  Write-Host "Warning: Installer exited with code $($process.ExitCode). Retrying with standard method..."
-                  Start-Process -FilePath $NstInst.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
-              }
+              
+              # Use cmd /c with proper quoting and all necessary switches to prevent language popup
+              $InstallArgs = "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LANGUAGE=English", "/SP-"
+              $process = Start-Process -FilePath "cmd.exe" `
+                  -ArgumentList "/c", "`"$($NstInst.FullName)`" $InstallArgs" `
+                  -Wait -PassThru -NoNewWindow
+              
+              Write-Host "NST Browser installer exited with code: $($process.ExitCode)"
+              Start-Sleep -Seconds 10
               
               $NstK = Get-ChildItem -Path $ThreeDir -Filter "nstchrome.zip" -Recurse | Select-Object -First 1
               if ($NstK) {
@@ -204,7 +213,7 @@ jobs:
           $NmInstaller = Get-ChildItem -Path (Join-Path $env:TEMP 'AppBundle') -Filter "*nomachine*.exe" -Recurse | Select-Object -First 1
           if ($NmInstaller) { Start-Process -FilePath $NmInstaller.FullName -ArgumentList "/VERYSILENT", "/NORESTART" -Wait }
 
-      # 8. العداد الذكي، التنبيهات المنبثقة (نعم/لا)، وفحص ملف الإيقاف
+      # 8. العداد الذكي، التنبيهات المنبثقة، وفحص ملف الإيقاف
       - name: Keep Session Alive
         shell: pwsh
         run: |
