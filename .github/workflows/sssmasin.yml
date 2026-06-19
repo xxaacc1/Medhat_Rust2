@@ -7,11 +7,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 800
     env:
-      # mail email: ketrine.knudsen@mail.com  pass: CvvDDD222@1
-      # nst mail   email: ops.backyard@execs.com   pass: Zxxz@@@@1111
-      # desktop  email: info.alexxshaww@gardener.com  pass: ZZZxxxaaa@111
-      # appsf  email: in.elizabethpenny@lovecat.com  pass: FFFdddaaa@@11
-      
       TIME_JOB: "340"
       aa2: "XCDOOD"
       aa3: "Zxxz4444"
@@ -161,7 +156,7 @@ jobs:
               Download-And-Verify $File2.FullName $ThreeDir | Out-Null
           }
 
-      # 6. تثبيت المتصفحات والكيرنل (مع حل مشكلة NST Browser)
+      # 6. تثبيت المتصفحات والكيرنل - الحل النهائي لـ NST Browser
       - name: Browser & Kernel Setup
         continue-on-error: true
         shell: pwsh
@@ -169,39 +164,60 @@ jobs:
           $BundleDir = Join-Path $env:TEMP 'AppBundle'
           $ThreeDir = Join-Path $env:TEMP 'THREE_EXTRACTED'
            
-          # NST Browser (Fixed Installation - prevents language popup)
+          # NST Browser - Fixed Installation with all Inno Setup switches
           $NstInst = Get-ChildItem -Path $BundleDir -Filter "*nst*.exe" -Recurse | Where-Object { $_.Name -notmatch "unins" } | Select-Object -First 1
           if ($NstInst) {
               Write-Host "Found NST Browser Installer: $($NstInst.FullName)"
               
-              # Use cmd /c with proper quoting and all necessary switches to prevent language popup
-              $InstallArgs = "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LANGUAGE=English", "/SP-"
-              $process = Start-Process -FilePath "cmd.exe" `
-                  -ArgumentList "/c", "`"$($NstInst.FullName)`" $InstallArgs" `
+              # Use all Inno Setup silent switches to prevent ALL dialogs
+              # /VERYSILENT - No progress bar
+              # /SUPPRESSMSGBOXES - Suppress all message boxes
+              # /NORESTART - Don't restart
+              # /SP- - Disable "This will install..." message
+              # /LANG=en - Set language to English (prevents language dialog)
+              
+              $InstallArgs = @(
+                  "/VERYSILENT",
+                  "/SUPPRESSMSGBOXES", 
+                  "/NORESTART",
+                  "/SP-",
+                  "/LANG=en"
+              )
+              
+              Write-Host "Installing with args: $($InstallArgs -join ' ')"
+              
+              # Run installer and wait for completion
+              $process = Start-Process -FilePath $NstInst.FullName `
+                  -ArgumentList $InstallArgs `
                   -Wait -PassThru -NoNewWindow
               
               Write-Host "NST Browser installer exited with code: $($process.ExitCode)"
-              Start-Sleep -Seconds 10
+              Start-Sleep -Seconds 15
               
+              # Install kernel
               $NstK = Get-ChildItem -Path $ThreeDir -Filter "nstchrome.zip" -Recurse | Select-Object -First 1
               if ($NstK) {
                   $NstDest = "C:\Users\runneradmin\.nst-agent\download\kernels\nstchrome"
                   New-Item -ItemType Directory -Path $NstDest -Force | Out-Null
                   Expand-Archive -Path $NstK.FullName -DestinationPath $NstDest -Force
+                  Write-Host "NST Chrome kernel installed successfully"
               }
           } else {
-              Write-Host "NST Browser installer not found."
+              Write-Host "WARNING: NST Browser installer not found!"
           }
 
           # BitBrowser
           $BitInst = Get-ChildItem -Path $BundleDir -Filter "*BitBrowser*.exe" -Recurse | Select-Object -First 1
           if ($BitInst) {
+              Write-Host "Installing BitBrowser..."
               Start-Process -FilePath $BitInst.FullName -ArgumentList "/S", "/allusers", "/norestart" -Wait
+              
               $BitK = Get-ChildItem -Path $ThreeDir -Filter "bitchrom.zip" -Recurse | Select-Object -First 1
               if ($BitK) {
                   $BitDest = "C:\Users\runneradmin\AppData\Roaming\BitBrowser\Chrome-bin"
                   New-Item -ItemType Directory -Path $BitDest -Force | Out-Null
                   Expand-Archive -Path $BitK.FullName -DestinationPath $BitDest -Force
+                  Write-Host "BitBrowser kernel installed successfully"
               }
           } 
 
@@ -211,9 +227,12 @@ jobs:
         shell: pwsh
         run: |
           $NmInstaller = Get-ChildItem -Path (Join-Path $env:TEMP 'AppBundle') -Filter "*nomachine*.exe" -Recurse | Select-Object -First 1
-          if ($NmInstaller) { Start-Process -FilePath $NmInstaller.FullName -ArgumentList "/VERYSILENT", "/NORESTART" -Wait }
+          if ($NmInstaller) { 
+              Write-Host "Installing NoMachine..."
+              Start-Process -FilePath $NmInstaller.FullName -ArgumentList "/VERYSILENT", "/NORESTART" -Wait 
+          }
 
-      # 8. العداد الذكي، التنبيهات المنبثقة، وفحص ملف الإيقاف
+      # 8. العداد الذكي مع التنبيهات المنبثقة
       - name: Keep Session Alive
         shell: pwsh
         run: |
@@ -222,25 +241,40 @@ jobs:
           
           # Load Windows Forms for Popups
           Add-Type -AssemblyName System.Windows.Forms
+          
           function Show-Popup {
               param([string]$msg)
-              # This will block the script and show a popup with Yes/No buttons until clicked
-              [System.Windows.Forms.MessageBox]::Show($msg, "Session Timer Alert", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+              # Show popup with Yes/No buttons - will block until clicked
+              [System.Windows.Forms.MessageBox]::Show(
+                  $msg, 
+                  "Session Timer Alert", 
+                  [System.Windows.Forms.MessageBoxButtons]::YesNo, 
+                  [System.Windows.Forms.MessageBoxIcon]::Warning
+              ) | Out-Null
           }
 
           Write-Host "Running custom timer for $KeepAliveMinutes minutes..."
+          
           for ($i = $KeepAliveMinutes; $i -gt 0; $i--) {
-              # Trigger popups at specific times
-              if ($i -eq 60) { Show-Popup "تنبيه: تبقى ساعة واحدة فقط قبل فحص الملف وإغلاق الجلسة! (اضغط نعم أو لا للمتابعة)" }
-              if ($i -eq 30) { Show-Popup "تنبيه: تبقى 30 دقيقة فقط قبل فحص الملف وإغلاق الجلسة! (اضغط نعم أو لا للمتابعة)" }
-              if ($i -eq 15) { Show-Popup "تنبيه: تبقى 15 دقيقة فقط قبل فحص الملف وإغلاق الجلسة! (اضغط نعم أو لا للمتابعة)" }
-              if ($i -eq 5)  { Show-Popup "تنبيه: تبقى 5 دقائق فقط قبل فحص الملف وإغلاق الجلسة! (اضغط نعم أو لا للمتابعة)" }
+              # Show popups at specific intervals
+              if ($i -eq 60) { 
+                  Show-Popup "تنبيه: تبقى ساعة واحدة فقط قبل فحص الملف وإغلاق الجلسة!`n`nاضغط Yes أو No للمتابعة" 
+              }
+              if ($i -eq 30) { 
+                  Show-Popup "تنبيه: تبقى 30 دقيقة فقط قبل فحص الملف وإغلاق الجلسة!`n`nاضغط Yes أو No للمتابعة" 
+              }
+              if ($i -eq 15) { 
+                  Show-Popup "تنبيه: تبقى 15 دقيقة فقط قبل فحص الملف وإغلاق الجلسة!`n`nاضغط Yes أو No للمتابعة" 
+              }
+              if ($i -eq 5) {  
+                  Show-Popup "تنبيه: تبقى 5 دقائق فقط قبل فحص الملف وإغلاق الجلسة!`n`nاضغط Yes أو No للمتابعة" 
+              }
               
               Write-Host "Session alive - $i minutes remaining before file check..."
               Start-Sleep -Seconds 60
           }
 
-          # بعد انتهاء الوقت، نبحث عن الملف لتحديد الأكشن
+          # Check for stop file after timer completes
           $StopFile = "C:\stop11stop.txt"
           if (Test-Path $StopFile) {
               Write-Host "----------------------------------------------"
